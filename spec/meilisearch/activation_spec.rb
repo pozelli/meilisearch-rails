@@ -1,4 +1,6 @@
-describe MeiliSearch::Rails do
+require 'support/models/queued_models'
+
+describe Meilisearch::Rails do
   it 'is active by default' do
     expect(described_class).to be_active
   end
