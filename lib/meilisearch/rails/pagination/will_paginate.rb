@@ -10,7 +10,7 @@ module Meilisearch
     module Pagination
       class WillPaginate
         def self.create(results, total_hits, options = {})
-          unless MeiliSearch::Rails.active?
+          unless Meilisearch::Rails.active?
             total_hits = 0
             options[:page] = 1
             options[:per_page] = 1

@@ -89,11 +89,11 @@ module Meilisearch
             hit.send(condition_key).to_s
           end
 
-          result['hits'].filter_map do |hit|
+          result['hits'].map do |hit|
             record = results_by_id[hit[condition_key.to_s].to_s]
             record&.formatted = hit['_formatted']
             record
-          end
+          end.compact
         end
       end
 

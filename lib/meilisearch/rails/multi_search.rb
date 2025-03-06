@@ -26,12 +26,12 @@ module Meilisearch
 
         queries.map! { |item| [nil, item] } if queries.is_a?(Array)
 
-        cleaned_queries = queries.filter_map do |(index_target, options)|
+        cleaned_queries = queries.map do |(index_target, options)|
           index_target = options.delete(:index_uid) || index_target || options[:class_name]&.constantize
 
           strip_pagination_options(options)
           normalize(options, index_target)
-        end
+        end.compact
 
         raw_results = client.multi_search(queries: cleaned_queries, federation: federation)
 

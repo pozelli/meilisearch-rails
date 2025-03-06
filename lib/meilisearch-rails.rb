@@ -164,7 +164,7 @@ module Meilisearch
 
       def attributes_to_hash(attributes, document)
         if attributes
-          attributes.to_h { |name, value| [name.to_s, value.call(document)] }
+          Hash[attributes.map { |name, value| [name.to_s, value.call(document)] }]
         else
           {}
         end
@@ -228,8 +228,15 @@ module Meilisearch
         instance_variable_get("@#{name}")
       end
 
+      def transform_hash(hash)
+        hash.each_with_object({}) do |(key, value), result|
+          new_key = yield(key)
+          result[new_key] = value
+        end
+      end
+
       def camelize_keys(hash)
-        hash.transform_keys { |key| key.to_s.camelize(:lower) }
+        transform_hash(hash) { |key| key.to_s.camelize(:lower) }
       end
 
       def to_settings
@@ -308,11 +315,12 @@ module Meilisearch
       end
 
       # Maually define facet_search due to complications with **opts in ruby 2.*
-      def facet_search(*args, **opts)
+      def facet_search(*args)
+        opts = args.last.is_a?(Hash) ? args.pop : {}
         SafeIndex.log_or_throw(:facet_search, @raise_on_failure) do
           return Meilisearch::Rails.black_hole unless Meilisearch::Rails.active?
 
-          @index.facet_search(*args, **opts)
+          @index.facet_search(*args, opts)
         end
       end
 
@@ -329,11 +337,11 @@ module Meilisearch
       def settings(*args)
         SafeIndex.log_or_throw(:settings, @raise_on_failure) do
           @index.settings(*args)
-        rescue ::Meilisearch::ApiError => e
-          return {} if e.code == 'index_not_found' # not fatal
-
-          raise e
         end
+      rescue ::Meilisearch::ApiError => e
+        return {} if e.code == 'index_not_found' # not fatal
+
+        raise e
       end
 
       def self.log_or_throw(method, raise_on_failure, &block)
@@ -424,7 +432,7 @@ module Meilisearch
             proc.call(record, remove) if ::MeiliSearch::Rails.active? && !ms_without_auto_index_scope
           end
         end
-        unless options[:auto_index] == false
+        if ::MeiliSearch::Rails.active? && options[:auto_index] != false
           if defined?(::Sequel::Model) && self < Sequel::Model
             class_eval do
               copy_after_validation = instance_method(:after_validation)
@@ -525,7 +533,7 @@ module Meilisearch
             documents = group.map do |d|
               attributes = settings.get_attributes(d)
               attributes = attributes.to_hash unless attributes.instance_of?(Hash)
-              attributes.merge ms_pk(options) => ms_primary_key_of(d, options)
+              attributes.merge({ ms_pk(options) => ms_primary_key_of(d, options) })
             end
             last_task = index.add_documents(documents)
           end
@@ -554,7 +562,7 @@ module Meilisearch
           next if ms_indexing_disabled?(options)
 
           index = ms_ensure_init(options, settings)
-          task = index.add_documents(documents.map { |d| settings.get_attributes(d).merge ms_pk(options) => ms_primary_key_of(d, options) })
+          task = index.add_documents(documents.map { |d| settings.get_attributes(d).merge({ ms_pk(options) => ms_primary_key_of(d, options) }) })
           index.wait_for_task(task['taskUid']) if synchronous || options[:synchronous]
         end
       end
@@ -572,7 +580,7 @@ module Meilisearch
             raise ArgumentError, 'Cannot index a record without a primary key' if primary_key.blank?
 
             doc = settings.get_attributes(document)
-            doc = doc.merge ms_pk(options) => primary_key
+            doc = doc.merge({ ms_pk(options) => primary_key })
 
             if synchronous || options[:synchronous]
               index.add_documents(doc).await
@@ -594,13 +602,13 @@ module Meilisearch
         primary_key = ms_primary_key_of(document)
         raise ArgumentError, 'Cannot index a record without a primary key' if primary_key.blank?
 
-        ms_configurations.filter_map do |options, settings|
+        ms_configurations.map do |options, settings|
           {
             synchronous: synchronous || options[:synchronous],
             index_uid: ms_index_uid(options),
             primary_key: primary_key
           }.with_indifferent_access unless ms_indexing_disabled?(options)
-        end
+        end.compact
       end
 
       def ms_remove_from_index!(document, synchronous = false)
@@ -649,7 +657,7 @@ module Meilisearch
         end
 
         index = ms_index(index_uid)
-        index.search(q, params.to_h { |k, v| [k, v] })
+        index.search(q, params.each_with_object({}) { |(k,v), h| h[k] = v })
       end
 
       module AdditionalMethods
@@ -702,6 +710,7 @@ module Meilisearch
 
         condition_key = meilisearch_options[:type].primary_key if has_virtual_column_as_pk
 
+        # See
         hit_ids = if has_virtual_column_as_pk
                     json['hits'].map { |hit| hit[condition_key] }
                   else
@@ -728,6 +737,10 @@ module Meilisearch
         res.extend(AdditionalMethods)
         res.send(:ms_init_raw_answer, json)
         res
+
+        # order_sql = "ARRAY_POSITION(ARRAY[#{hit_ids.join(',')}]::INTEGER[], #{condition_key}) ASC"
+        # results = meilisearch_options[:type].where(condition_key => hit_ids).order(Arel.sql(order_sql))
+        # results
       end
 
       def ms_index(name = nil)
@@ -854,10 +867,17 @@ module Meilisearch
         options[:primary_key] || Meilisearch::Rails::IndexSettings::DEFAULT_PRIMARY_KEY
       end
 
+      def transform_hash(hash)
+        hash.each_with_object({}) do |(key, value), result|
+          new_key = yield(key)
+          result[new_key] = value
+        end
+      end
+
       def meilisearch_settings_changed?(server_state, user_configuration)
         return true if server_state.nil?
 
-        user_configuration.transform_keys! { |key| key.to_s.camelize(:lower) }
+        user_configuration = transform_hash(user_configuration) { |key| key.to_s.camelize(:lower) }
 
         user_configuration.any? do |key, user|
           server = server_state[key]
