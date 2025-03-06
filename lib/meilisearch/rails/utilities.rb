@@ -12,6 +12,42 @@ module Meilisearch
           (klasses + klasses.map(&:descendants).flatten).uniq
         end
 
+        def clear_all_tenants_indexes
+          Apartment::Tenant.switch!('public')
+          clear_all_indexes
+
+          Instance.find_each do |instance|
+            Apartment::Tenant.switch!(instance.database)
+            clear_all_indexes
+          end
+
+          Apartment::Tenant.switch!('public')
+        end
+
+        def reindex_all_tenants_models
+          Apartment::Tenant.switch!('public')
+          reindex_all_models
+
+          Instance.find_each do |instance|
+            Apartment::Tenant.switch!(instance.database)
+            reindex_all_models
+          end
+
+          Apartment::Tenant.switch!('public')
+        end
+
+        def set_settings_all_tenants_models
+          Apartment::Tenant.switch!('public')
+          set_settings_all_models
+
+          Instance.find_each do |instance|
+            Apartment::Tenant.switch!(instance.database)
+            set_settings_all_models
+          end
+
+          Apartment::Tenant.switch!('public')
+        end
+
         def clear_all_indexes
           get_model_classes.each(&:clear_index!)
         end

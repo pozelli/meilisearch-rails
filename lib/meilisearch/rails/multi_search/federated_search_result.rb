@@ -11,6 +11,14 @@ module Meilisearch
         @metadata = raw_results
       end
 
+      def last_page?
+        (@metadata['offset'] + @metadata['limit']) >= @metadata['estimatedTotalHits']
+      end
+
+      def out_of_range?
+        @metadata['offset'] >= @metadata['estimatedTotalHits']
+      end
+
       include Enumerable
 
       delegate :each, :to_a, :to_ary, :empty?, :[], :first, :last, to: :@hits
@@ -20,7 +28,7 @@ module Meilisearch
       def load_hits(hits, searches)
         hits_by_pos = hits.group_by { |hit| hit['_federation']['queriesPosition'] }
 
-        keys_and_records_by_pos = hits_by_pos.to_h do |pos, group_hits|
+        keys_and_records_by_pos = Hash[hits_by_pos.map do |pos, group_hits|
           search_target, search_opts = searches[pos]
 
           klass = if search_opts[:class_name]
@@ -34,9 +42,9 @@ module Meilisearch
           else
             [pos, [nil, group_hits]]
           end
-        end
+        end]
 
-        hits.filter_map do |hit|
+        hits.map do |hit|
           hit_cond_key, recs_by_id = keys_and_records_by_pos[hit['_federation']['queriesPosition']]
 
           if hit_cond_key.present?
@@ -46,7 +54,7 @@ module Meilisearch
           else
             hit
           end
-        end
+        end.compact
       end
 
       def load_results(klass, hits)
