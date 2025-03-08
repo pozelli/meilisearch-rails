@@ -18,6 +18,12 @@ describe Meilisearch::Rails do
       it 'responds with a black hole' do
         expect(described_class.client.foo.bar.now.nil.item.issue).to be_nil
       end
+
+      it 'does not queue tasks' do
+        expect do
+          EnqueuedDocument.create! name: 'hello world'
+        end.not_to raise_error
+      end
     end
 
     context 'with a block' do
