@@ -1,4 +1,5 @@
 require 'support/models/queued_models'
+require 'support/models/movie'
 
 describe MeiliSearch::Rails do
   it 'is active by default' do
@@ -23,6 +24,14 @@ describe MeiliSearch::Rails do
         expect do
           EnqueuedDocument.create! name: 'hello world'
         end.not_to raise_error
+      end
+
+      it 'does not run callbacks on save' do
+        movie = Movie.new(title: 'Harry Potter')
+        allow(movie).to receive(:ms_index!)
+        movie.save
+
+        expect(movie).not_to have_received(:ms_index!)
       end
     end
 
