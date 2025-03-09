@@ -418,7 +418,7 @@ module MeiliSearch
             proc.call(record, remove) if ::MeiliSearch::Rails.active? && !ms_without_auto_index_scope
           end
         end
-        unless options[:auto_index] == false
+        if ::MeiliSearch::Rails.active? && options[:auto_index] != false
           if defined?(::Sequel::Model) && self < Sequel::Model
             class_eval do
               copy_after_validation = instance_method(:after_validation)
