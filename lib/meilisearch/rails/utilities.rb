@@ -61,7 +61,15 @@ module Meilisearch
             ::Rails.logger.info klass
             ::Rails.logger.info "Reindexing #{klass.count} records..."
 
-            klass.ms_reindex!
+            begin
+              klass.ms_reindex!(10)
+            rescue
+              begin
+                klass.ms_reindex!(5)
+              rescue
+                klass.ms_reindex!(2)
+              end
+            end
           end
         end
 
